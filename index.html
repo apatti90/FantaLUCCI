@@ -1,0 +1,657 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Crown, Coins, History, Plus, RotateCcw, Save, ScrollText, Trophy, Users, Laugh, Truck, AlertTriangle } from "lucide-react";
+
+const PLAYERS = [
+  "COMI",
+  "D'ANGELO",
+  "BERNABE'",
+  "SCIVOLETTO",
+  "MIGLIORINO",
+  "FERRARINI",
+  "PATTI",
+  "RUSSO",
+  "CASCIOLI",
+];
+
+const DEFAULT_QUOTES = {
+  "COMI": 12,
+  "D'ANGELO": 13,
+  "BERNABE'": 10,
+  "SCIVOLETTO": 11,
+  "MIGLIORINO": 9,
+  "FERRARINI": 14,
+  "PATTI": 15,
+  "RUSSO": 8,
+  "CASCIOLI": 8,
+};
+
+const PHRASE_RULES = [
+  { player: "COMI", label: '"Era fuori!"', points: -1 },
+  { player: "COMI", label: '"Non l’ho vista!"', points: -1 },
+  { player: "COMI", label: '"Mia!" detta tardi', points: -2 },
+  { player: "D'ANGELO", label: '"Era buona!"', points: -1 },
+  { player: "D'ANGELO", label: '"Dovevi chiamarla!"', points: -2 },
+  { player: "D'ANGELO", label: '"Dai regà!"', points: 1 },
+  { player: "BERNABE'", label: '"Tranquilli!"', points: 1 },
+  { player: "BERNABE'", label: '"Facile!" prima del casino', points: -1 },
+  { player: "SCIVOLETTO", label: '"Lascia!" a vuoto', points: -2 },
+  { player: "SCIVOLETTO", label: '"Vai!" urlato', points: 1 },
+  { player: "MIGLIORINO", label: '"Ultima partita!"', points: -1 },
+  { player: "MIGLIORINO", label: '"Sono morto"', points: 1 },
+  { player: "FERRARINI", label: '"Ma che campo è?"', points: -1 },
+  { player: "FERRARINI", label: '"Questa è mia!"', points: 1 },
+  { player: "PATTI", label: '"Rigiocamola"', points: -1 },
+  { player: "PATTI", label: '"Era dentro"', points: -1 },
+  { player: "PATTI", label: '"Palla corta!"', points: 1 },
+  { player: "RUSSO", label: '"Troppo vento!"', points: -1 },
+  { player: "RUSSO", label: '"Era facile!"', points: -1 },
+  { player: "CASCIOLI", label: '"Che botta!"', points: 1 },
+  { player: "CASCIOLI", label: '"Non ci arrivo"', points: -1 },
+];
+
+const SOCIAL_RULES = [
+  { label: "Arriva in ritardo", points: -2 },
+  { label: 'Dice "ultima partita" ma poi ne gioca altre 3', points: -2 },
+  { label: "Porta birre post allenamento", points: 3 },
+  { label: "Fa una battuta sarcastica memorabile", points: 2 },
+  { label: "Si lamenta del vento", points: -1 },
+  { label: "Si lamenta del sole", points: -1 },
+  { label: "Si lamenta della sabbia", points: -1 },
+  { label: 'Dice "oggi gioco piano"', points: 1 },
+];
+
+const DEFAULT_MANAGERS = [
+  { name: "Lucciere", team: ["PATTI", "COMI", "RUSSO"] },
+  { name: "Team Sabbia", team: ["FERRARINI", "D'ANGELO", "CASCIOLI"] },
+  { name: "Corte Reale", team: ["BERNABE'", "SCIVOLETTO", "MIGLIORINO"] },
+];
+
+const COURT_ROLES = [
+  {
+    title: "Giullare di Corte",
+    subtitle: "Il re dei tormentoni",
+    icon: Laugh,
+    penance: "All’allenamento successivo deve intrattenere il gruppo con un discorso, una scusa epica o un nuovo tormentone.",
+  },
+  {
+    title: "Cocchiere",
+    subtitle: "Il ministro della logistica",
+    icon: Truck,
+    penance: "All’allenamento successivo deve montare il campo, sistemare le linee o gestire la logistica iniziale.",
+  },
+  {
+    title: "Somaro Reale",
+    subtitle: "L’eroe delle figuracce",
+    icon: AlertTriangle,
+    penance: "All’allenamento successivo porta birre, acqua o altra offerta simbolica per la corte.",
+  },
+];
+
+const STORAGE_KEY = "fantalucci-state-v1";
+
+function initialState() {
+  return {
+    budget: 30,
+    quotes: DEFAULT_QUOTES,
+    managers: DEFAULT_MANAGERS,
+    currentSessionName: `Allenamento ${new Date().toLocaleDateString("it-IT")}`,
+    currentScores: Object.fromEntries(PLAYERS.map((p) => [p, 0])),
+    currentFeed: [],
+    sessions: [],
+  };
+}
+
+function pointsClass(points) {
+  return points >= 0 ? "text-emerald-600" : "text-rose-600";
+}
+
+function moneyForTeam(team, quotes) {
+  return team.reduce((sum, p) => sum + (quotes[p] || 0), 0);
+}
+
+export default function FantaLucciWebApp() {
+  const [state, setState] = useState(initialState);
+  const [customPlayer, setCustomPlayer] = useState(PLAYERS[0]);
+  const [customLabel, setCustomLabel] = useState("");
+  const [customPoints, setCustomPoints] = useState(1);
+  const [newManagerName, setNewManagerName] = useState("");
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setState(JSON.parse(raw));
+    } catch (e) {
+      console.error("Errore caricamento localStorage", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [state]);
+
+  const playerRanking = useMemo(() => {
+    return [...PLAYERS]
+      .map((player) => ({ player, points: state.currentScores[player] || 0 }))
+      .sort((a, b) => b.points - a.points);
+  }, [state.currentScores]);
+
+  const managerRanking = useMemo(() => {
+    return state.managers
+      .map((manager) => ({
+        ...manager,
+        spent: moneyForTeam(manager.team, state.quotes),
+        points: manager.team.reduce((sum, player) => sum + (state.currentScores[player] || 0), 0),
+      }))
+      .sort((a, b) => b.points - a.points);
+  }, [state.managers, state.currentScores, state.quotes]);
+
+  const seasonPlayerTotals = useMemo(() => {
+    const totals = Object.fromEntries(PLAYERS.map((p) => [p, 0]));
+    state.sessions.forEach((session) => {
+      PLAYERS.forEach((player) => {
+        totals[player] += session.scores[player] || 0;
+      });
+    });
+    PLAYERS.forEach((player) => {
+      totals[player] += state.currentScores[player] || 0;
+    });
+    return totals;
+  }, [state.sessions, state.currentScores]);
+
+  const seasonManagerRanking = useMemo(() => {
+    return state.managers
+      .map((manager) => ({
+        ...manager,
+        spent: moneyForTeam(manager.team, state.quotes),
+        points: manager.team.reduce((sum, player) => sum + (seasonPlayerTotals[player] || 0), 0),
+      }))
+      .sort((a, b) => b.points - a.points);
+  }, [state.managers, seasonPlayerTotals, state.quotes]);
+
+  function applyEvent(player, label, points) {
+    setState((prev) => ({
+      ...prev,
+      currentScores: {
+        ...prev.currentScores,
+        [player]: (prev.currentScores[player] || 0) + points,
+      },
+      currentFeed: [
+        {
+          id: Date.now() + Math.random(),
+          player,
+          label,
+          points,
+          time: new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }),
+        },
+        ...prev.currentFeed,
+      ].slice(0, 30),
+    }));
+  }
+
+  function addCustomEvent() {
+    if (!customLabel.trim()) return;
+    applyEvent(customPlayer, customLabel.trim(), Number(customPoints));
+    setCustomLabel("");
+    setCustomPoints(1);
+  }
+
+  function toggleManagerPlayer(managerName, player) {
+    setState((prev) => {
+      const managers = prev.managers.map((manager) => {
+        if (manager.name !== managerName) return manager;
+        const has = manager.team.includes(player);
+        let nextTeam = has ? manager.team.filter((p) => p !== player) : [...manager.team, player];
+        if (!has && nextTeam.length > 3) return manager;
+        if (moneyForTeam(nextTeam, prev.quotes) > prev.budget) return manager;
+        return { ...manager, team: nextTeam };
+      });
+      return { ...prev, managers };
+    });
+  }
+
+  function addManager() {
+    const clean = newManagerName.trim();
+    if (!clean) return;
+    if (state.managers.some((m) => m.name.toLowerCase() === clean.toLowerCase())) return;
+    setState((prev) => ({
+      ...prev,
+      managers: [...prev.managers, { name: clean, team: [] }],
+    }));
+    setNewManagerName("");
+  }
+
+  function saveSession() {
+    const hasEvents = state.currentFeed.length > 0 || Object.values(state.currentScores).some((v) => v !== 0);
+    if (!hasEvents) return;
+    setState((prev) => ({
+      ...prev,
+      sessions: [
+        {
+          id: Date.now(),
+          name: prev.currentSessionName || `Allenamento ${prev.sessions.length + 1}`,
+          date: new Date().toLocaleString("it-IT"),
+          scores: prev.currentScores,
+          feed: prev.currentFeed,
+        },
+        ...prev.sessions,
+      ],
+      currentSessionName: `Allenamento ${new Date().toLocaleDateString("it-IT")}`,
+      currentScores: Object.fromEntries(PLAYERS.map((p) => [p, 0])),
+      currentFeed: [],
+    }));
+  }
+
+  function resetCurrentSession() {
+    setState((prev) => ({
+      ...prev,
+      currentScores: Object.fromEntries(PLAYERS.map((p) => [p, 0])),
+      currentFeed: [],
+    }));
+  }
+
+  function resetAll() {
+    setState(initialState());
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-amber-50 via-white to-orange-50 p-4 md:p-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+          <Card className="overflow-hidden rounded-3xl border-0 shadow-xl">
+            <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 p-8 text-white">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Badge className="bg-white/20 text-white hover:bg-white/20">Beach Volley Fantasy Game</Badge>
+                    <Badge className="bg-black/20 text-white hover:bg-black/20">Mobile friendly</Badge>
+                    <Badge className="bg-black/20 text-white hover:bg-black/20">Salvataggio locale</Badge>
+                  </div>
+                  <h1 className="text-4xl font-black tracking-tight md:text-6xl">FantaLUCCI</h1>
+                  <p className="mt-3 max-w-3xl text-base text-white/90 md:text-lg">
+                    Il fantasy game degli allenamenti di beach volley dove non contano i gesti tecnici ma i tormentoni,
+                    le lamentele, i ritardi, le uscite improbabili e tutta la goliardia della corte della sabbia.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 md:w-[360px]">
+                  <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+                    <div className="text-sm text-white/80">Valuta ufficiale</div>
+                    <div className="mt-1 flex items-center gap-2 text-2xl font-bold"><Coins className="h-5 w-5" /> LUCCI</div>
+                  </div>
+                  <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+                    <div className="text-sm text-white/80">Rosa fantasy</div>
+                    <div className="mt-1 flex items-center gap-2 text-2xl font-bold"><Users className="h-5 w-5" /> 3 giocatori</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+
+        <Tabs defaultValue="live" className="space-y-6">
+          <TabsList className="grid h-auto w-full grid-cols-5 rounded-2xl p-1">
+            <TabsTrigger value="live">Live</TabsTrigger>
+            <TabsTrigger value="fantasy">Fantallenatori</TabsTrigger>
+            <TabsTrigger value="season">Stagione</TabsTrigger>
+            <TabsTrigger value="history">Storico</TabsTrigger>
+            <TabsTrigger value="court">Corte</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="live" className="space-y-6">
+            <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+              <Card className="rounded-3xl shadow-lg">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-2xl"><ScrollText className="h-6 w-6" /> Punteggio live</CardTitle>
+                  <CardDescription>Usalo dal telefono durante l’allenamento. Il Lucciere registra tutto con un tap.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <div className="mb-2 text-sm text-slate-600">Nome allenamento</div>
+                    <Input
+                      value={state.currentSessionName}
+                      onChange={(e) => setState((prev) => ({ ...prev, currentSessionName: e.target.value }))}
+                      placeholder="Es. Allenamento del giovedì"
+                    />
+                  </div>
+
+                  <div>
+                    <h3 className="mb-3 text-lg font-semibold">Frasi iconiche</h3>
+                    <div className="space-y-3">
+                      {PHRASE_RULES.map((rule, i) => (
+                        <div key={`${rule.player}-${i}`} className="flex flex-col gap-3 rounded-2xl border p-4 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <div className="font-semibold">{rule.player}</div>
+                            <div className="text-sm text-slate-600">{rule.label}</div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`min-w-12 text-right text-lg font-bold ${pointsClass(rule.points)}`}>{rule.points > 0 ? `+${rule.points}` : rule.points}</span>
+                            <Button onClick={() => applyEvent(rule.player, rule.label, rule.points)}>Registra</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="mb-3 text-lg font-semibold">Eventi sociali</h3>
+                    <div className="space-y-3">
+                      {SOCIAL_RULES.map((rule, i) => (
+                        <div key={`${rule.label}-${i}`} className="rounded-2xl border p-4">
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <div className="text-sm md:text-base">{rule.label}</div>
+                            <div className={`text-lg font-bold ${pointsClass(rule.points)}`}>{rule.points > 0 ? `+${rule.points}` : rule.points}</div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {PLAYERS.map((player) => (
+                              <Button key={`${rule.label}-${player}`} variant="outline" className="rounded-full" onClick={() => applyEvent(player, rule.label, rule.points)}>
+                                {player}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-6">
+                <Card className="rounded-3xl shadow-lg">
+                  <CardHeader>
+                    <CardTitle>Evento personalizzato</CardTitle>
+                    <CardDescription>Per bonus e malus inventati al momento.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <div className="mb-1 text-sm text-slate-600">Giocatore</div>
+                      <div className="flex flex-wrap gap-2">
+                        {PLAYERS.map((player) => (
+                          <Button key={player} variant={customPlayer === player ? "default" : "outline"} className="rounded-full" onClick={() => setCustomPlayer(player)}>
+                            {player}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-1 text-sm text-slate-600">Descrizione</div>
+                      <Input value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder='Es. "Ha parlato del vento per la sesta volta"' />
+                    </div>
+                    <div>
+                      <div className="mb-1 text-sm text-slate-600">Punti</div>
+                      <Input type="number" value={customPoints} onChange={(e) => setCustomPoints(Number(e.target.value))} />
+                    </div>
+                    <Button className="w-full" onClick={addCustomEvent}>Aggiungi evento</Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-3xl shadow-lg">
+                  <CardHeader>
+                    <CardTitle>Classifica live giocatori</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {playerRanking.map((row, index) => (
+                        <div key={row.player} className="flex items-center justify-between rounded-2xl border px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-bold">{index + 1}</div>
+                            <span className="font-medium">{row.player}</span>
+                          </div>
+                          <span className={`text-lg font-bold ${pointsClass(row.points)}`}>{row.points > 0 ? `+${row.points}` : row.points}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-3xl shadow-lg">
+                  <CardHeader>
+                    <CardTitle>Feed del Lucciere</CardTitle>
+                    <CardDescription>Ultimi eventi registrati.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button className="flex-1" onClick={saveSession}><Save className="mr-2 h-4 w-4" /> Salva allenamento</Button>
+                      <Button variant="outline" className="flex-1" onClick={resetCurrentSession}><RotateCcw className="mr-2 h-4 w-4" /> Reset live</Button>
+                    </div>
+                    <div className="space-y-3">
+                      {state.currentFeed.length === 0 && <div className="rounded-2xl border border-dashed p-4 text-sm text-slate-500">Ancora nessun evento registrato.</div>}
+                      {state.currentFeed.map((item) => (
+                        <div key={item.id} className="flex items-center justify-between rounded-2xl border px-4 py-3">
+                          <div>
+                            <div className="text-sm font-medium text-slate-800">{item.player} — {item.label}</div>
+                            <div className="text-xs text-slate-500">{item.time}</div>
+                          </div>
+                          <span className={`text-lg font-bold ${pointsClass(item.points)}`}>{item.points > 0 ? `+${item.points}` : item.points}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="fantasy" className="space-y-6">
+            <Card className="rounded-3xl shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl"><Users className="h-6 w-6" /> Fantallenatori e rose</CardTitle>
+                <CardDescription>Ogni fantallenatore può avere 3 giocatori e deve restare entro il budget di {state.budget} LUCCI.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Input value={newManagerName} onChange={(e) => setNewManagerName(e.target.value)} placeholder="Nuovo fantallenatore" />
+                  <Button onClick={addManager}><Plus className="mr-2 h-4 w-4" /> Aggiungi</Button>
+                </div>
+
+                <div className="grid gap-6 xl:grid-cols-2">
+                  {state.managers.map((manager) => {
+                    const spent = moneyForTeam(manager.team, state.quotes);
+                    const currentPoints = manager.team.reduce((sum, player) => sum + (state.currentScores[player] || 0), 0);
+                    return (
+                      <Card key={manager.name} className="rounded-3xl border bg-slate-50/60 shadow-sm">
+                        <CardHeader>
+                          <CardTitle className="text-xl">{manager.name}</CardTitle>
+                          <CardDescription>
+                            Spesi {spent}/{state.budget} LUCCI · Punti live {currentPoints > 0 ? `+${currentPoints}` : currentPoints}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="flex flex-wrap gap-2">
+                            {manager.team.length === 0 && <span className="text-sm text-slate-500">Nessun giocatore selezionato</span>}
+                            {manager.team.map((player) => (
+                              <Badge key={player} className="rounded-full px-3 py-1 text-sm">{player}</Badge>
+                            ))}
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            {PLAYERS.map((player) => {
+                              const selected = manager.team.includes(player);
+                              return (
+                                <button
+                                  key={`${manager.name}-${player}`}
+                                  onClick={() => toggleManagerPlayer(manager.name, player)}
+                                  className={`rounded-2xl border p-3 text-left transition ${selected ? "border-amber-400 bg-amber-50" : "bg-white hover:shadow-sm"}`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-medium">{player}</span>
+                                    <Badge variant={selected ? "default" : "secondary"}>{state.quotes[player]} LUCCI</Badge>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+
+                <Card className="rounded-3xl shadow-sm">
+                  <CardHeader>
+                    <CardTitle>Classifica live fantallenatori</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {managerRanking.map((manager, index) => (
+                        <div key={manager.name} className="flex items-center justify-between rounded-2xl border px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-bold">{index + 1}</div>
+                            <div>
+                              <div className="font-medium">{manager.name}</div>
+                              <div className="text-xs text-slate-500">{manager.team.join(" · ") || "Nessuna rosa"}</div>
+                            </div>
+                          </div>
+                          <span className={`text-lg font-bold ${pointsClass(manager.points)}`}>{manager.points > 0 ? `+${manager.points}` : manager.points}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="season" className="space-y-6">
+            <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+              <Card className="rounded-3xl shadow-lg">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-2xl"><Trophy className="h-6 w-6" /> Classifica generale</CardTitle>
+                  <CardDescription>Somma di tutti gli allenamenti salvati più l’eventuale sessione live non ancora archiviata.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {seasonManagerRanking.map((manager, index) => (
+                      <div key={manager.name} className="flex items-center justify-between rounded-2xl border px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-bold">{index + 1}</div>
+                          <div>
+                            <div className="font-medium">{manager.name}</div>
+                            <div className="text-xs text-slate-500">{manager.team.join(" · ")}</div>
+                          </div>
+                        </div>
+                        <span className={`text-lg font-bold ${pointsClass(manager.points)}`}>{manager.points > 0 ? `+${manager.points}` : manager.points}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-3xl shadow-lg">
+                <CardHeader>
+                  <CardTitle>Totali di stagione per giocatore</CardTitle>
+                  <CardDescription>Per capire chi ha generato più caos, gloria o disgrazia.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {[...PLAYERS]
+                      .map((player) => ({ player, points: seasonPlayerTotals[player] || 0 }))
+                      .sort((a, b) => b.points - a.points)
+                      .map((row, index) => (
+                        <div key={row.player} className="flex items-center justify-between rounded-2xl border px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-bold">{index + 1}</div>
+                            <span className="font-medium">{row.player}</span>
+                          </div>
+                          <span className={`text-lg font-bold ${pointsClass(row.points)}`}>{row.points > 0 ? `+${row.points}` : row.points}</span>
+                        </div>
+                      ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="history" className="space-y-6">
+            <Card className="rounded-3xl shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl"><History className="h-6 w-6" /> Storico allenamenti</CardTitle>
+                <CardDescription>Archivio delle sessioni salvate. I dati restano memorizzati nel browser del dispositivo.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex justify-end">
+                  <Button variant="outline" onClick={resetAll}><RotateCcw className="mr-2 h-4 w-4" /> Reset completo</Button>
+                </div>
+                {state.sessions.length === 0 && (
+                  <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-500">
+                    Nessun allenamento salvato ancora. Registra eventi nella tab Live e poi premi “Salva allenamento”.
+                  </div>
+                )}
+                <div className="space-y-4">
+                  {state.sessions.map((session) => (
+                    <Card key={session.id} className="rounded-3xl border bg-slate-50/60 shadow-sm">
+                      <CardHeader>
+                        <CardTitle className="text-xl">{session.name}</CardTitle>
+                        <CardDescription>{session.date}</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid gap-2 md:grid-cols-3">
+                          {[...PLAYERS]
+                            .map((player) => ({ player, points: session.scores[player] || 0 }))
+                            .filter((row) => row.points !== 0)
+                            .sort((a, b) => b.points - a.points)
+                            .map((row) => (
+                              <div key={`${session.id}-${row.player}`} className="flex items-center justify-between rounded-2xl border bg-white px-4 py-3">
+                                <span className="font-medium">{row.player}</span>
+                                <span className={`font-bold ${pointsClass(row.points)}`}>{row.points > 0 ? `+${row.points}` : row.points}</span>
+                              </div>
+                            ))}
+                        </div>
+                        <div className="space-y-2">
+                          {session.feed.slice(0, 8).map((item) => (
+                            <div key={item.id} className="flex items-center justify-between rounded-2xl border bg-white px-4 py-3">
+                              <span className="text-sm text-slate-700">{item.player} — {item.label}</span>
+                              <span className={`font-bold ${pointsClass(item.points)}`}>{item.points > 0 ? `+${item.points}` : item.points}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="court" className="space-y-6">
+            <Card className="rounded-3xl shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl"><Crown className="h-6 w-6" /> Le nomine della corte</CardTitle>
+                <CardDescription>Il vincitore della stagione assegna tre cariche ufficiali con relativa penitenza simbolica.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-6 lg:grid-cols-3">
+                  {COURT_ROLES.map((role) => {
+                    const Icon = role.icon;
+                    return (
+                      <motion.div key={role.title} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+                        <Card className="h-full rounded-3xl border-amber-200 bg-gradient-to-b from-amber-50 to-white shadow-md">
+                          <CardHeader>
+                            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+                              <Icon className="h-6 w-6" />
+                            </div>
+                            <CardTitle>{role.title}</CardTitle>
+                            <CardDescription>{role.subtitle}</CardDescription>
+                          </CardHeader>
+                          <CardContent className="text-sm leading-6 text-slate-700">
+                            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+                              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-700">Penitenza</div>
+                              <p>{role.penance}</p>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
