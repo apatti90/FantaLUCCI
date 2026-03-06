@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>FantaLUCCI</title>
+
+<style>
+
+body{
+font-family:Arial;
+background:#f4f4f4;
+text-align:center;
+padding:20px;
+}
+
+h1{
+color:#d35400;
+}
+
+button{
+padding:10px 15px;
+margin:5px;
+font-size:16px;
+border:none;
+border-radius:6px;
+background:#e67e22;
+color:white;
+cursor:pointer;
+}
+
+button:hover{
+background:#ca6f1e;
+}
+
+.card{
+background:white;
+padding:15px;
+margin:10px auto;
+max-width:500px;
+border-radius:10px;
+box-shadow:0 2px 6px rgba(0,0,0,0.2);
+}
+
+.score{
+font-size:20px;
+font-weight:bold;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>🏐 FantaLUCCI</h1>
+
+<div class="card">
+<h3>Classifica Giocatori</h3>
+
+<div id="scores"></div>
+
+</div>
+
+
+<div class="card">
+<h3>Eventi rapidi</h3>
+
+<button onclick="addPoints('COMI',-1)">COMI - "Era fuori"</button>
+<button onclick="addPoints('RUSSO',-1)">RUSSO - "Troppo vento"</button>
+<button onclick="addPoints('PATTI',1)">PATTI - "Palla corta"</button>
+
+</div>
+
+
+<div class="card">
+
+<h3>Evento personalizzato</h3>
+
+<select id="player">
+<option>COMI</option>
+<option>D'ANGELO</option>
+<option>BERNABE'</option>
+<option>SCIVOLETTO</option>
+<option>MIGLIORINO</option>
+<option>FERRARINI</option>
+<option>PATTI</option>
+<option>RUSSO</option>
+<option>CASCIOLI</option>
+</select>
+
+<input id="points" type="number" value="1">
+
+<button onclick="customEvent()">Aggiungi</button>
+
+</div>
+
+
+<script>
+
+let players=[
+"COMI",
+"D'ANGELO",
+"BERNABE'",
+"SCIVOLETTO",
+"MIGLIORINO",
+"FERRARINI",
+"PATTI",
+"RUSSO",
+"CASCIOLI"
+]
+
+let scores={}
+
+players.forEach(p=>scores[p]=0)
+
+function render(){
+
+let html=""
+
+players
+.sort((a,b)=>scores[b]-scores[a])
+.forEach(p=>{
+
+html+=`
+<div>
+${p} 
+<span class="score">${scores[p]}</span>
+</div>
+`
+
+})
+
+document.getElementById("scores").innerHTML=html
+
+}
+
+function addPoints(player,points){
+
+scores[player]+=points
+render()
+
+}
+
+function customEvent(){
+
+let p=document.getElementById("player").value
+let pts=parseInt(document.getElementById("points").value)
+
+scores[p]+=pts
+
+render()
+
+}
+
+render()
+
+</script>
+
+</body>
+</html>
